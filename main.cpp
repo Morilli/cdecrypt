@@ -17,6 +17,7 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 #define _CRT_SECURE_NO_WARNINGS
+#define _FILE_OFFSET_BITS 64
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -24,12 +25,7 @@
 #include <openssl/aes.h>
 #include <openssl/sha.h>
 #include <time.h>
-#include <vector>
-#include <ctype.h>
-#include <cstdint>
-#include <sys/stat.h>
-
-#pragma comment(lib,"libeay32.lib")
+#include <direct.h>
 
 typedef uint64_t u64;
 typedef int64_t s64;
@@ -91,20 +87,20 @@ typedef struct
 	u8	Padding1;					// 0x183
 
 	u64	SystemVersion;		// 0x184
-	u64	TitleID;					// 0x18C 
-	u32	TitleType;				// 0x194 
-	u16	GroupID;					// 0x198 
-	u8	Reserved[62];			// 0x19A 
+	u64	TitleID;					// 0x18C
+	u32	TitleType;				// 0x194
+	u16	GroupID;					// 0x198
+	u8	Reserved[62];			// 0x19A
 	u32	AccessRights;			// 0x1D8
-	u16	TitleVersion;			// 0x1DC 
-	u16	ContentCount;			// 0x1DE 
+	u16	TitleVersion;			// 0x1DC
+	u16	ContentCount;			// 0x1DE
 	u16 BootIndex;				// 0x1E0
-	u8	Padding3[2];			// 0x1E2 
+	u8	Padding3[2];			// 0x1E2
 	u8	SHA2[32];					// 0x1E4
-	
+
 	ContentInfo ContentInfos[64];
 
-	Content Contents[];		// 0x1E4 
+	Content Contents[];		// 0x1E4
 
 } TitleMetaData;
 
@@ -122,7 +118,7 @@ struct FST
 	u32 EntryCount;
 
 	u32 UnknownB[5];
-	
+
 	FSTInfo FSTInfos[];
 };
 
@@ -151,11 +147,11 @@ struct FEntry
 		};
 		u32 entry[2];
 	};
-	unsigned short Flags;
-	unsigned short ContentID;
+	u16 Flags;
+	u16 ContentID;
 };
 
-#define bs16(s) (unsigned short)( ((s)>>8) | ((s)<<8) )
+#define bs16(s) (u16)( ((s)>>8) | ((s)<<8) )
 #define bs32(s) (u32)( (((s)&0xFF0000)>>8) | (((s)&0xFF00)<<8) | ((s)>>24) | ((s)<<24) )
 
 u32 bs24( u32 i )
@@ -177,12 +173,12 @@ char *ReadFile( const char *Name, u32 *Length )
 
 	fseek( in, 0, SEEK_END );
 	*Length = ftell(in);
-	
+
 	fseek( in, 0, 0 );
 
 	char *Data = new char[*Length];
 
-	u32 read = fread( Data, 1, *Length, in );
+	fread( Data, 1, *Length, in );
 
 	fclose( in );
 
@@ -254,7 +250,7 @@ void ExtractFileHash( FILE *in, u64 PartDataOffset, u64 FileOffset, u64 Size, ch
 	u64 Wrote			= 0;
 	u64 WriteSize = 0xFC00;	// Hash block size
 	u64 Block			= (FileOffset / 0xFC00) & 0xF;
-		
+
 	FILE *out = fopen( FileName, "wb" );
 	if( out == NULL )
 	{
@@ -276,11 +272,11 @@ void ExtractFileHash( FILE *in, u64 PartDataOffset, u64 FileOffset, u64 Size, ch
 			WriteSize = Size;
 
 		fread( encdata, sizeof( char ), BLOCK_SIZE, in);
-		
+
 		memset( IV, 0, sizeof(IV) );
 		IV[1] = (u8)ContentID;
-		AES_cbc_encrypt( (const u8 *)(encdata), (u8 *)Hashes, 0x400, &key, IV, AES_DECRYPT );		
-		
+		AES_cbc_encrypt( (const u8 *)(encdata), (u8 *)Hashes, 0x400, &key, IV, AES_DECRYPT );
+
 		memcpy( H0, Hashes+0x14*Block, SHA_DIGEST_LENGTH );
 
 		memcpy( IV, Hashes+0x14*Block, sizeof(IV) );
@@ -316,7 +312,7 @@ void ExtractFileHash( FILE *in, u64 PartDataOffset, u64 FileOffset, u64 Size, ch
 			soffset = 0;
 		}
 	}
-	
+
 	fclose( out );
 }
 #undef BLOCK_SIZE
@@ -326,7 +322,6 @@ void ExtractFile( FILE *in, u64 PartDataOffset, u64 FileOffset, u64 Size, char *
 	char encdata[BLOCK_SIZE];
 	char decdata[BLOCK_SIZE];
 	u64 Wrote=0;
-	u64 Block			= (FileOffset / BLOCK_SIZE) & 0xF;
 
 	//printf("PO:%08llX FO:%08llX FS:%llu\n", PartDataOffset, FileOffset, Size );
 
@@ -334,7 +329,7 @@ void ExtractFile( FILE *in, u64 PartDataOffset, u64 FileOffset, u64 Size, char *
 	u64 roffset = FileOffset / BLOCK_SIZE * BLOCK_SIZE;
 	u64 soffset = FileOffset - (FileOffset / BLOCK_SIZE * BLOCK_SIZE);
 	//printf("Extracting:\"%s\" RealOffset:%08llX RealOffset:%08llX\n", FileName, roffset, soffset );
-	
+
 	FILE *out = fopen( FileName, "wb" );
 	if( out == NULL )
 	{
@@ -352,14 +347,14 @@ void ExtractFile( FILE *in, u64 PartDataOffset, u64 FileOffset, u64 Size, char *
 		WriteSize = WriteSize - soffset;
 
 	fseeko( in, PartDataOffset+roffset, SEEK_SET );
-	
+
 	while(Size > 0)
 	{
 		if( WriteSize > Size )
-			WriteSize = Size;
+				WriteSize = Size;
 
 		fread( encdata, sizeof( char ), BLOCK_SIZE, in);
-		
+
 		AES_cbc_encrypt( (const u8 *)(encdata), (u8 *)decdata, BLOCK_SIZE, &key, IV, AES_DECRYPT);
 
 		Size -= fwrite( decdata+soffset, sizeof( char ), WriteSize, out);
@@ -372,50 +367,60 @@ void ExtractFile( FILE *in, u64 PartDataOffset, u64 FileOffset, u64 Size, char *
 			soffset = 0;
 		}
 	}
-	
+
 	fclose( out );
 }
+
+int char2int(char input)
+{
+  if(input >= '0' && input <= '9')
+    return input - '0';
+  if(input >= 'A' && input <= 'F')
+    return input - 'A' + 10;
+  if(input >= 'a' && input <= 'f')
+    return input - 'a' + 10;
+  return 0;
+}
+
+void hextobytes(char *input, u8 *output, int input_length)
+{
+	for (int i = 0; i < input_length; i += 2) {
+		output[i / 2] = char2int(input[i])*16 + char2int(input[i+1]);
+	}
+}
+
 s32 main( s32 argc, char*argv[])
 {
 	char str[1024];
-	
-	printf("CDecrypt v 1.0b by crediar\n");
+
+	printf("CDecrypt v2.1 by crediar (modified v2)\n");
 	printf("Built: %s %s\n", __TIME__, __DATE__ );
 
-	if( argc != 4 )
+	if (argc != 3 && argc != 4)
 	{
 		printf("Usage:\n");
-		printf(" CDecrypt.exe tmd cetk ckey\n\n");
+		printf(" CDecrypt.exe <CommonKey> path/to/input [path/to/output]\n\n");
 		return EXIT_SUCCESS;
+	}
+	if (strlen(argv[1]) != 32) {
+		fprintf(stderr, "Error: Provided CommonKey has a wrong length.\n");
 	}
 
 	u32 TMDLen;
-	char *TMD = ReadFile( argv[1], &TMDLen );
+	snprintf(str, sizeof(str), "%s\\title.tmd", argv[2]);
+	char *TMD = ReadFile( str, &TMDLen );
 	if( TMD == nullptr )
 	{
 		perror("Failed to open tmd\n");
 		return EXIT_FAILURE;
 	}
-	
+
 	u32 TIKLen;
-	char *TIK = ReadFile( argv[2], &TIKLen );
+	snprintf(str, sizeof(str), "%s\\title.tik", argv[2]);
+	char *TIK = ReadFile( str, &TIKLen );
 	if( TIK == nullptr )
 	{
 		perror("Failed to open cetk\n");
-		return EXIT_FAILURE;
-	}
-	
-	u32 CKeyLen;
-	char *CKey = ReadFile( argv[3], &CKeyLen );
-	if( CKey == nullptr )
-	{
-		perror("Failed to open ckey\n");
-		return EXIT_FAILURE;
-	}
-
-	if( CKeyLen != 16 )
-	{
-		printf("ckey is wrong length\n");
 		return EXIT_FAILURE;
 	}
 
@@ -426,41 +431,28 @@ s32 main( s32 argc, char*argv[])
 		printf("Unsupported TMD Version:%u\n", tmd->Version );
 		return EXIT_FAILURE;
 	}
-	
+
 	printf("Title version:%u\n", bs16(tmd->TitleVersion) );
 	printf("Content Count:%u\n", bs16(tmd->ContentCount) );
 
-	AES_set_decrypt_key( (const u8*)CKey, CKeyLen*8, &key );
+	u8 commonKey[16];
+	hextobytes(argv[1], commonKey, 32);
+
+	AES_set_decrypt_key( (const u8*)commonKey, 128, &key );
 
 	memset( title_id, 0, sizeof(title_id) );
-	
+
 	memcpy( title_id, TMD + 0x18C, 8 );
 	memcpy( enc_title_key, TIK + 0x1BF, 16 );
-	
-	printf("Encrypted Title KEY:\n\t");
-	for(s32 i=0; i< sizeof(enc_title_key); ++i)
-		printf("%02X", enc_title_key[i]);
-	printf("\n");
-		
-	printf("Title ID:\n\t");
-	for(s32 i=0; i< sizeof(title_id); ++i)
-		printf("%02X", title_id[i]);
-	printf("\n");
-	
-	AES_cbc_encrypt(enc_title_key, dec_title_key, sizeof(dec_title_key), &key, title_id, AES_DECRYPT);
-	
-	printf("Decrypted Title KEY:\n\t");
-	for(s32 i=0; i< sizeof(dec_title_key); ++i)
-		printf("%02X", dec_title_key[i]);
-	printf("\n");
 
+	AES_cbc_encrypt(enc_title_key, dec_title_key, sizeof(dec_title_key), &key, title_id, AES_DECRYPT);
 	AES_set_decrypt_key( dec_title_key, sizeof(dec_title_key)*8, &key);
-		
+
 	char iv[16];
 	memset( iv, 0, sizeof(iv) );
-	
-	sprintf( str, "%08X.app", bs32(tmd->Contents[0].ID) );
-	
+
+	sprintf( str, "%s\\%08X.app", argv[2], bs32(tmd->Contents[0].ID) );
+
 	u32 CNTLen;
 	char *CNT = ReadFile( str, &CNTLen );
 	if( CNT == (char*)NULL )
@@ -476,11 +468,18 @@ s32 main( s32 argc, char*argv[])
 
 	if( bs64(tmd->Contents[0].Size) != (u64)CNTLen )
 	{
-		printf("Size of content:%u is wrong: %u:%I64u\n", bs32(tmd->Contents[0].ID), CNTLen, bs64(tmd->Contents[0].Size) );
+		printf("Size of content:%u is wrong: %u:%I64llu\n", bs32(tmd->Contents[0].ID), CNTLen, bs64(tmd->Contents[0].Size) );
 		return EXIT_FAILURE;
 	}
 
-	AES_cbc_encrypt( (const u8 *)(CNT), (u8 *)(CNT), CNTLen, &key, (u8*)(iv), AES_DECRYPT );	
+	AES_cbc_encrypt( (const u8 *)(CNT), (u8 *)(CNT), CNTLen, &key, (u8*)(iv), AES_DECRYPT );
+
+	if( bs32(*(u32*)CNT) != 0x46535400 )
+	{
+		sprintf( str, "%08X.dec", bs32(tmd->Contents[0].ID) );
+		FileDump( str, CNT, CNTLen );
+		return EXIT_FAILURE;
+	}
 
 	FST *_fst = (FST*)(CNT);
 
@@ -489,19 +488,18 @@ s32 main( s32 argc, char*argv[])
 	{
 		return EXIT_FAILURE;
 	}
-	
+
 	FEntry *fe = (FEntry*)(CNT+0x20+bs32(_fst->EntryCount)*0x20);
-	
+
 	u32 Entries = bs32(*(u32*)(CNT+0x20+bs32(_fst->EntryCount)*0x20+8));
 	u32 NameOff = 0x20 + bs32(_fst->EntryCount) * 0x20 + Entries * 0x10;
-	u32 DirEntries = 0;
-	
+
 	printf("FST entries:%u\n", Entries );
 
 	char *Path = new char[1024];
 	s32 Entry[16];
-	s32 LEntry[16];
-	
+	u32 LEntry[16];
+
 	s32 level=0;
 
 	for( u32 i=1; i < Entries; ++i )
@@ -524,45 +522,54 @@ s32 main( s32 argc, char*argv[])
 				printf("level error:%u\n", level );
 				break;
 			}
-		} else {
-
+		}
+		else
+		{
 			memset( Path, 0, 1024 );
 
+			strcpy(Path, (argc == 4) ? argv[3] : argv[2]);
+			_mkdir(Path);
+			Path[strlen(Path)] = '\\';
 			for( s32 j=0; j<level; ++j )
 			{
 				if(j)
-					Path[strlen(Path)] = '/';
+					Path[strlen(Path)] = '\\';
 				memcpy( Path+strlen(Path), CNT + NameOff + bs24( fe[Entry[j]].NameOffset), strlen(CNT + NameOff + bs24( fe[Entry[j]].NameOffset) ) );
-				mkdir(Path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+				_mkdir(Path);
 			}
 			if(level)
-				Path[strlen(Path)] = '/';
+				Path[strlen(Path)] = '\\';
 			memcpy( Path+strlen(Path), CNT + NameOff + bs24( fe[i].NameOffset ), strlen(CNT + NameOff + bs24( fe[i].NameOffset )) );
 
 			u32 CNTSize = bs32(fe[i].FileLength);
-			u64 CNTOff  = ((u64)bs32(fe[i].FileOffset))<<5;
-			
+			u64 CNTOff  = ((u64)bs32(fe[i].FileOffset));
+
+			if( (bs16(fe[i].Flags) & 4) == 0 )
+			{
+				CNTOff <<= 5;
+			}
+
 			printf("Size:%07X Offset:0x%010llX CID:%02X U:%02X %s\n", CNTSize, CNTOff, bs16(fe[i].ContentID), bs16(fe[i].Flags), Path );
 
 			u32 ContFileID = bs32(tmd->Contents[bs16(fe[i].ContentID)].ID);
-			
-			sprintf( str, "%08X.app", ContFileID );
+
+			sprintf( str, "%s\\%08X.app", argv[2], ContFileID );
 
 			if(!(fe[i].Type & 0x80))
 			{
 				FILE *cnt = fopen( str, "rb" );
 				if( cnt == NULL )
 				{
-					sprintf( str, "%08x", ContFileID );
+					sprintf( str, "%08X", ContFileID );
 					cnt = fopen( str, "rb" );
 					if( cnt == NULL )
 					{
-						printf("Could not open:\"%s\"\n", str );			
+						printf("Could not open:\"%s\"\n", str );
 						perror("");
 						return EXIT_FAILURE;
 					}
 				}
-				if( (bs16(fe[i].Flags) & 0x440) )
+				if( (bs16(tmd->Contents[bs16(fe[i].ContentID)].Type) & 0x2003) == 0x2003 )
 				{
 					ExtractFileHash( cnt, 0, CNTOff, bs32(fe[i].FileLength), Path, bs16(fe[i].ContentID) );
 				}

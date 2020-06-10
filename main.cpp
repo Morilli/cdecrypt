@@ -18,6 +18,7 @@
 */
 #define _CRT_SECURE_NO_WARNINGS
 #define _FILE_OFFSET_BITS 64
+#define __USE_MINGW_ANSI_STDIO
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -25,8 +26,13 @@
 #include <openssl/aes.h>
 #include <openssl/sha.h>
 #include <time.h>
-#include <direct.h>
-
+#include <inttypes.h>
+#ifdef _WIN32
+	#include <direct.h>
+	#define mkdir(path, mode) _mkdir(path)
+#else
+	#include <sys/stat.h>
+#endif
 typedef uint64_t u64;
 typedef int64_t s64;
 
@@ -407,7 +413,7 @@ s32 main( s32 argc, char*argv[])
 	}
 
 	u32 TMDLen;
-	snprintf(str, sizeof(str), "%s\\title.tmd", argv[2]);
+	snprintf(str, sizeof(str), "%s/title.tmd", argv[2]);
 	char *TMD = ReadFile( str, &TMDLen );
 	if( TMD == nullptr )
 	{
@@ -416,7 +422,7 @@ s32 main( s32 argc, char*argv[])
 	}
 
 	u32 TIKLen;
-	snprintf(str, sizeof(str), "%s\\title.tik", argv[2]);
+	snprintf(str, sizeof(str), "%s/title.tik", argv[2]);
 	char *TIK = ReadFile( str, &TIKLen );
 	if( TIK == nullptr )
 	{
@@ -451,7 +457,7 @@ s32 main( s32 argc, char*argv[])
 	char iv[16];
 	memset( iv, 0, sizeof(iv) );
 
-	sprintf( str, "%s\\%08X.app", argv[2], bs32(tmd->Contents[0].ID) );
+	sprintf( str, "%s/%08X.app", argv[2], bs32(tmd->Contents[0].ID) );
 
 	u32 CNTLen;
 	char *CNT = ReadFile( str, &CNTLen );
@@ -468,7 +474,7 @@ s32 main( s32 argc, char*argv[])
 
 	if( bs64(tmd->Contents[0].Size) != (u64)CNTLen )
 	{
-		printf("Size of content:%u is wrong: %u:%I64llu\n", bs32(tmd->Contents[0].ID), CNTLen, bs64(tmd->Contents[0].Size) );
+		printf("Size of content:%u is wrong: %u:%" PRIu64 "\n", bs32(tmd->Contents[0].ID), CNTLen, bs64(tmd->Contents[0].Size) );
 		return EXIT_FAILURE;
 	}
 
@@ -528,17 +534,17 @@ s32 main( s32 argc, char*argv[])
 			memset( Path, 0, 1024 );
 
 			strcpy(Path, (argc == 4) ? argv[3] : argv[2]);
-			_mkdir(Path);
-			Path[strlen(Path)] = '\\';
+			mkdir(Path, 0700);
+			Path[strlen(Path)] = '/';
 			for( s32 j=0; j<level; ++j )
 			{
 				if(j)
-					Path[strlen(Path)] = '\\';
+					Path[strlen(Path)] = '/';
 				memcpy( Path+strlen(Path), CNT + NameOff + bs24( fe[Entry[j]].NameOffset), strlen(CNT + NameOff + bs24( fe[Entry[j]].NameOffset) ) );
-				_mkdir(Path);
+				mkdir(Path, 0700);
 			}
 			if(level)
-				Path[strlen(Path)] = '\\';
+				Path[strlen(Path)] = '/';
 			memcpy( Path+strlen(Path), CNT + NameOff + bs24( fe[i].NameOffset ), strlen(CNT + NameOff + bs24( fe[i].NameOffset )) );
 
 			u32 CNTSize = bs32(fe[i].FileLength);
@@ -549,11 +555,11 @@ s32 main( s32 argc, char*argv[])
 				CNTOff <<= 5;
 			}
 
-			printf("Size:%07X Offset:0x%010llX CID:%02X U:%02X %s\n", CNTSize, CNTOff, bs16(fe[i].ContentID), bs16(fe[i].Flags), Path );
+			printf("Size:%07X Offset:0x%010" PRIX64 " CID:%02X U:%02X %s\n", CNTSize, CNTOff, bs16(fe[i].ContentID), bs16(fe[i].Flags), Path );
 
 			u32 ContFileID = bs32(tmd->Contents[bs16(fe[i].ContentID)].ID);
 
-			sprintf( str, "%s\\%08X.app", argv[2], ContFileID );
+			sprintf( str, "%s/%08X.app", argv[2], ContFileID );
 
 			if(!(fe[i].Type & 0x80))
 			{
